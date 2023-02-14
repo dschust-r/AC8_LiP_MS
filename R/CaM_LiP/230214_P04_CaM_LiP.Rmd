@@ -1,0 +1,424 @@
+---
+title: "P04 AC8 OE membranes +/- Calmodulin"
+author: "Dina"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: spacelab
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    code_folding: hide
+---
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Experiment
+
+Experiment performed on: **201024**
+
+* New membrane suspensions were prepared (AC8 oe HEK293 S GnTi- cells)
+* Cells were lyzed with a 50 mL dounce homogenizer (20 strokes) in LiP buffer with addition of DNAse and protease inhibitors
+* Suspensions were centrifuged at 1,000 x g at 4°C for 10 minutes
+* Supernatant was centrifuged at 35,000 rpm at 4°C for 40 minutes
+* Pellet was resuspended in LiP buffer and aliquotted 
+ 
+Calmodulin was spiked in as a proof of principle experiment to map binding interfaces and see if they correspond to literature. 
+
+Amounts spiked in: 
+
+* 0 ug
+* 0.01 ug
+* 0.1 ug
+* 0.5 ug
+* 1 ug
+* 2 ug
+* 3 ug
+
+All experiments were conducted in quadruplicates. 
+The suspensions were incubated with CaM for 10 minutes at 25°C, followed by a treatment with proteinase K (1:100 enzyme to substrate ratio) (LiP) or water (TC). The sample was then heated to 99°C for 5 minutes, cooled down at 4°C for 5 minutes, then treated with the same volume of 10 % sodium deoxycholate (standard LiP procedure). 
+The LiP step was followed by a tryptic digest over night and a C18 clean-up the next day. 
+A library of pooled replicates was produced. 
+After drying, peptides were resuspended and measured on a **Thermo Eploris 480** mass spectrometer on **201120**. Data was acquired with a normalized AGC target of 2000 % which reduced the datapoints/peak but increased sensitivity. 
+Data was searched in Spectronaut (v.14).
+A contaminant FASTA was included, single hits were excluded, 5 AA were set as the minimum peptide length. Data was median normalized in Spectronaut. 
+
+The data set is published as part of [this](https://www.biorxiv.org/content/10.1101/2023.02.01.522707v1) manuscript. 
+The raw data is deposited on PRIDE (identifier: PXD039520).
+
+# PREPARATION
+
+## Loading packages
+
+```{r loading_packages, setting_wd, message=FALSE, warning=FALSE}
+library(protti)
+library(tidyverse)
+library(data.table)
+
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) # set working directory to location of R script
+```
+
+
+## Loading data
+
+```{r loading_data, message=FALSE, warning=FALSE}
+DIA_raw <- read_protti("20211116_170344_211116_201120_P04_EX1_CaM_Report.csv")
+
+```
+Only proteotypic peptides will be retained, except for bovine AC8. Due to high sequence similarities with human AC8, filtering for proteotypic peptides does not make sense here. 
+
+```{r cleaning_data, message = FALSE, warning = FALSE}
+
+DIA_raw_filtered <- DIA_raw %>%
+  filter(pg_fasta_files != "contaminants", pg_fasta_files != "NaN") %>%
+  filter(fg_quantity > 10) %>%
+  mutate(intensity_log2 = log2(pep_ms2quantity)) # Use peptide quantity (summed up for each peptide, only modifications are separated,  are summed up)
+
+DIA_clean <- DIA_raw_filtered %>% 
+  separate(r_condition, c("digestion", "concentration"), " ", remove = FALSE) %>%
+  mutate(concentration = as.numeric(concentration))
+
+DIA_clean_AC8_non_proteotypic  <- DIA_clean %>%
+  filter(pg_protein_accessions %like% "E1BQ12")
+
+DIA_clean_proteotypic <- DIA_clean %>%
+  filter(pg_protein_accessions != "E1BQ12") %>%
+  filter(pep_is_proteotypic == TRUE)
+
+DIA_clean_final <- DIA_clean_proteotypic %>%
+  rbind(DIA_clean_AC8_non_proteotypic) %>%
+  mutate(uniprot_id = pg_protein_accessions) %>%
+  select(digestion, 
+         concentration,
+         r_condition,
+         r_file_name, 
+         r_replicate, 
+         pg_fasta_files, 
+         pg_genes, 
+         uniprot_id, 
+         pep_ms2quantity,
+         intensity_log2,
+         pep_grouping_key,
+         pep_stripped_sequence,
+         pep_nr_of_missed_cleavages
+         )
+  
+unis <- unique(DIA_clean_final$uniprot_id)
+
+uniprot <- # download protein information from UniProt
+  fetch_uniprot(
+    unis,
+    columns =  c(
+      "protein_name",
+      "gene_names",
+      "length",
+      "sequence"
+    )
+  ) %>%
+  rename(
+    protein_sequence = sequence,
+    length_protein = length,
+    uniprot_id = accession
+  )
+
+DIA_clean_uniprot <- DIA_clean_final %>%
+  left_join(uniprot, by = "uniprot_id") %>%
+  mutate(protein_sequence = ifelse(uniprot_id == "E1BQ12", 
+                           "MELSDVRCLSGSEELYTIHPTPPAGDSGSGSRPQRLLWQTAVRHITEQRFIHGHRGGGGGGGNGSSSKASDPGGGGPNHHHASQLSGDSALPLYALGPGERAHGTGGPKVFPERSGSGSASGSGGGGDLGFLHLDCAPSNSDFFLNGGYSYRGVIFPTLRNSFKSRDLERLYQRYFLGQRRKSEVVMNVLDVLTKLTLLVLHLSLASAPMDPLKGILLGFFTGIEVVICALVVVRKDTTSHTYLQYSGVVTWVAMTTQILAAGLGYGLLGDGIGYVLFTLFATYSMLPLPLTWAILAGLGTSLMQVVLQAVIPRLAVISINQVVAQAVLFMCMNTAGIFISYLSDRAQRQAFLETRRCVEARLRLETENQRQERLVLSVLPRFVVLEMINDMTNVEDEHLQHQFHRIYIHRYENVSILFADVKGFTNLSTTLSAQELVRMLNELFARFDRLAHEHHCLRIKILGDCYYCVSGLPEPRQDHAHCCVEMGLSMIKTIRYVRSRTKHDVDMRIGIHSGSVLCGVLGLRKWQFDVWSWDVDIANKLESGGIPGRIHISKATLDCLNGDYNVEEGHGKERNEFLRKHNIETYLIKQPEESLLSLPEDIVKESVSSSDRRNSGATFTEGSWSPELPFDNIVGKQNTLAALTRNSINLLPNHLAQALHVQSGPEEINKRIEHTIDLRSGDKLRREHIKPFSLMFKDSSLEHKYSQMRDEVFKSNLVCAFIVLLFITAIQSLLPSSRVMPMAIQFSILIMLHSALVLITTAEDYKCLPLVLRKTCCWINETYLARNVIIFASILINFLGAILNILWCDFDKSIPLKNLTFNSSAVFTDICSYPEYFVFTGVLAMVTCAVFLRLNSVLKLAVLLIMIAIYALLTETIYAGLFLRYDNLNHSGEDFLGTKEASLLLMAMFLLAVFYHGQQLEYTARLDFLWRVQAKEEINEMKELREHNENMLRNILPSHVARHFLEKDRDNEELYSQSYDAVGVMFASIPGFADFYSQTEMNNQGVECLRLLNEIIADFDELLGEDRFQDIEKIKTIGSTYMAVSGLSPEKQQCEDKWGHLCALADFSLALTESIQEINKHSFNNFELRIGISHGSVVAGVIGAKKPQYDIWGKTVNLASRMDSTGVSGRIQVPEETYLILKDQGFAFDYRGEIYVKGISEQEGKIKTYFLLGRVQPNPFILPPRRLPGQYSLAAVVLGLVQSLNRQRQKQLLNENNNTGIIKGHYNRRTLLTPSGPEPGAPAEGADKPELPAAALEVLFQGPGGVSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLPVPWPTLVTTFGYGLQCFARYPDHMKQHDFFKSAMPEGYVQERTIFFKDDGNYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNYNSHNVYIMADKQKNGIKVNFKIRHNIEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSYQSALSKDPNEKRDHMVLLEFVTAAGITLGMDELYKAASAWSHPQFEKGGGSGGGSGGSAWSHPQFEK", protein_sequence)) %>%
+  mutate(length_protein = ifelse(uniprot_id == "E1BQ12", str_count(protein_sequence), length_protein)) %>%
+  find_peptide(protein_sequence, pep_stripped_sequence) %>%
+  peptide_type(aa_before, last_aa) %>%
+  sequence_coverage(protein_sequence, pep_stripped_sequence) %>%
+  distinct()
+
+DIA_clean_AC8 <-
+  DIA_clean_uniprot[grep("E1BQ12", DIA_clean_uniprot$uniprot_id),]
+
+proteins_identified <- uniprot %>%
+  distinct(uniprot_id)
+
+# fwrite(proteins_identified, file = "identified_proteins_CaM_LiP.csv", sep = ",")
+
+```
+
+
+# DATA ANALYSIS
+
+## Sequence coverage
+```{r sequence_coverage_AC8, message = FALSE, warning = FALSE}
+
+DIA_clean_AC8 %>%
+  mutate(concentration = fct_inorder(factor(concentration))) %>%
+  ggplot() +
+  geom_linerange(aes(x = concentration, ymax = end, ymin = start, col = concentration), size=5) +
+  coord_flip() +
+  xlab(" ") +
+  ylab("Protein Sequence") +
+  theme(axis.text.y = element_text(size=10)) +
+  scale_y_continuous(breaks = seq(0,1253,100)) +
+  theme_minimal() +
+  ggtitle(c("AC8 coverage across conditions (LiP)"))
+
+start <- c(185, 216, 246, 272, 296, 323, 718, 741, 784, 837, 862, 902, 33, 1192, 1254)
+end <- c(204, 234, 266, 289, 317, 343, 735, 763, 808, 855, 882, 918, 52, 1216, 1534)
+type <- c("transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "transmembrane", "CaMBD", "CaMBD", "Tag")
+
+domains <- data.frame(start, end, type)
+
+DIA_clean_AC8 %>%
+  dplyr::select(start, end) %>% 
+  mutate(type = "covered sequence") %>%
+  rbind(domains) %>%
+  ggplot() +
+  geom_linerange(aes(x = type, ymax = end, ymin = start, col = type), size=5) +
+  coord_flip() +
+  xlab(" ") +
+  ylab("protein sequence") +
+  theme(axis.text.y = element_text(size=10)) +
+  scale_y_continuous(breaks = seq(0,1534,100)) +
+  theme_bw() +
+  ggtitle(c("AC8 sequence coverage and domains")) +
+  scale_color_manual(values = c("#5680C1",
+                                        "#B96DAD",
+                                        "#64CACA",
+                                        "#81ABE9"))
+```
+
+
+## Volcano plots
+
+```{r Volcano_plot_input, message = FALSE, warning = FALSE}
+# Volcano_input <- DIA_clean_uniprot %>%
+#   dplyr::select(
+#     pep_grouping_key,
+#     uniprot_id,
+#     r_file_name,
+#     r_condition,
+#     r_replicate,
+#     protein_names,
+#     intensity_log2,
+#     start,
+#     end,
+#     pep_type,
+#     protein_sequence,
+#     length_protein
+#   ) %>%
+#   filter(r_condition == "LiP 0" | r_condition == "LiP 3")
+# 
+# Volcano_input <- Volcano_input %>%
+#   unique() %>%
+#   assign_missingness(r_file_name,
+#                      r_condition,
+#                      pep_grouping_key,
+#                      intensity_log2,
+#                      ref_condition = "LiP 0",
+#                      retain_columns = c(uniprot_id, pep_grouping_key, start, end, pep_type, protein_sequence, length_protein))
+# 
+# t_test_result_proDA_pep <- diff_abundance(Volcano_input, 
+#                                 r_file_name, 
+#                                 r_condition, 
+#                                 pep_grouping_key,
+#                                 intensity_log2,
+#                                 missingness, 
+#                                 comparison, 
+#                                 ref_condition = "LiP 0", 
+#                                 method = "proDA", 
+#                                 retain_columns = c(uniprot_id, pep_grouping_key, start, end, pep_type, protein_sequence, length_protein))
+# 
+# AC8_proDA <- t_test_result_proDA_pep %>%
+#   filter(uniprot_id == "E1BQ12")
+```
+
+
+```{r volcano_plot_AC8, fig.align= "center", message = FALSE, warning = FALSE}
+
+# volcano_protti(t_test_result_proDA_pep, pep_grouping_key, diff, adj_pval, method = "target", target_column = uniprot_id, target = "E1BQ12",  x_axis_label = "log2(fold change) 3 ug CaM vs 0 ug CaM", title = "Volcano plot peptide level", y_axis_label = "-log10(q-value)", log2FC_cutoff = 1, significance_cutoff = 0.05, interactive = TRUE)
+
+```
+
+## Dose response curves
+
+Dose response curves are fitted for based on 4 parameter logarithmic models computed for each curve. 
+The output are the EC50, the Hill coefficient, max and min value, as well the correlation and a p-value. 
+
+```{r dose_response_input, message = FALSE, warning = FALSE}
+dose_response <- DIA_clean_AC8 %>%
+  group_by(pep_grouping_key) %>%
+  mutate(nmolar_concentration = (((((concentration/1000000)/57)*1000000)/16838)*1000000000)+100) %>%
+  # filter(r_condition != "LiP 0") %>%
+  mutate(completeness = length(pep_grouping_key))
+
+dose_response <- dose_response %>%
+  fit_drc_4p(r_file_name,
+             pep_grouping_key,
+             intensity_log2,
+             nmolar_concentration)
+
+merge <- DIA_clean_AC8 %>%
+  dplyr::select(
+    pep_grouping_key,
+    uniprot_id,
+    start,
+    end,
+    pep_type
+  )
+
+colnames(merge) <-
+  c(
+    "pep_grouping_key",
+    "uniprot_id",
+    "start",
+    "end",
+    "peptide_type"
+  )
+
+dose_response_correlations <- dose_response %>%
+  left_join(merge, by = "pep_grouping_key") %>%
+  unique() %>%
+  mutate(length = 1534)
+
+drc_ac8_0.85 <- dose_response_correlations %>%
+  filter(correlation > 0.85)
+
+# drc_4p_plot(drc_ac8_0.85, pep_grouping_key, intensity_log2, nmolar_concentration, targets = "all", unit = "nM", facet = T, export = F)
+
+barcode_plot(dose_response_correlations, 
+             start, 
+             end, 
+             length, 
+             facet = uniprot_id, 
+             cutoffs = c(correlation = 0.85, anova_adj_pval = 0.05)
+             )
+
+drc_4p_plot(dose_response_correlations, pep_grouping_key, intensity_log2, nmolar_concentration, targets = "all", unit = "nM", facet = FALSE, export = TRUE, export_name = "drc_CaM_AC8_only")
+
+dose_response_correlations %>%
+  select(-plot_curve, -plot_points) %>%
+  fwrite(file = "AC8_CaM_drc.csv")
+
+```
+
+# SUPPLEMENT - Quality control 
+
+## LiP condition
+
+### Charge states
+
+```{r quality_control_cvs, fig.width = 12, fig.align= "center",  message = FALSE, warning = FALSE}
+qc_cvs(
+  data = DIA_clean_uniprot,
+  grouping = pep_grouping_key,
+  condition = r_condition,
+  intensity = pep_ms2quantity,
+  plot = FALSE
+)
+
+qc_cvs(
+  data = DIA_clean_uniprot,
+  grouping = pep_grouping_key,
+  condition = r_condition,
+  intensity = pep_ms2quantity,
+  plot_style = "density",
+  plot = TRUE
+)
+
+qc_cvs(
+  data = DIA_clean_uniprot,
+  grouping = pep_grouping_key,
+  condition = r_condition,
+  intensity = pep_ms2quantity,
+  plot_style = "violin",
+  plot = TRUE
+)
+
+```
+
+### Intensity distribution
+
+```{r quality_control_log2_int_distr, fig.align= "center", message = FALSE, warning = FALSE}
+qc_intensity_distribution(
+  DIA_clean_uniprot,
+  r_file_name,
+  pep_grouping_key,
+  intensity_log2,
+  plot_style = "histogram"
+)
+
+```
+
+### Missed cleavages
+
+```{r quality_control_missed_cleav, fig.align= "center", message = FALSE, warning = FALSE}
+qc_missed_cleavages(
+  DIA_clean_uniprot,
+  r_file_name,
+  pep_grouping_key,
+  pep_nr_of_missed_cleavages,
+  fg_quantity,
+  method = "intensity",
+  plot = TRUE,
+  interactive = FALSE
+)
+
+qc_missed_cleavages(
+  DIA_clean_uniprot,
+  r_file_name,
+  pep_grouping_key,
+  pep_nr_of_missed_cleavages,
+  fg_quantity,
+  method = "count",
+  plot = TRUE,
+  interactive = FALSE
+
+)
+```
+
+### Peptide types
+
+```{r quality_control_pep_type, fig.align = "center", message = FALSE, warning = FALSE}
+qc_peptide_type(
+  DIA_clean_uniprot,
+  r_file_name,
+  pep_grouping_key,
+  pep_type,
+  intensity = pep_ms2quantity,
+  method = "count",
+  plot = TRUE,
+  interactive = FALSE
+)
+
+qc_peptide_type(
+  DIA_clean_uniprot,
+  r_file_name,
+  pep_grouping_key,
+  pep_type,
+  intensity = pep_ms2quantity,
+  method = "intensity",
+  plot = TRUE,
+  interactive = FALSE
+)
+
+```
+
+### Number of peptide IDs per sample
+
+```{r quality_control_pep_ID, fig.align = "center", message = FALSE, warning = FALSE}
+qc_ids(DIA_clean_uniprot, r_file_name, pep_grouping_key, condition = r_condition, intensity = intensity_log2)
+
+```
+
+### Principal component analysis (PCA)
+
+```{r PCA, message = FALSE, warning = FALSE}
+qc_pca(DIA_clean_uniprot, 
+       r_file_name, 
+       pep_grouping_key, 
+       intensity_log2, 
+       r_condition)
+
+```

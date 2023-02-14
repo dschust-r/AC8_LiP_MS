@@ -27,7 +27,7 @@ The interaction of Gbg was uncharacterized.
 The experiment was conducted in quadruplicates. 
 
 **LiP-MS:** 
-Membrane pellets were produced as mentioned [here](https://www.nature.com/articles/s41594-021-00700-8). They were resuspended in LiP-buffer with 1 mM MnCl2 and 100 uM GTPgS for samples containing G proteins.
+Membrane pellets were produced as mentioned [here](https://www.biorxiv.org/content/10.1101/2023.02.01.522707v1.full.pdf). They were resuspended in LiP-buffer with 1 mM MnCl2 and 100 uM GTPgS for samples containing G proteins.
 The interaction partners were added in increasing concentrations (0, 0.01, 0.1, 0.5, 1, 2, 3 ug) to 50 uL of membrane suspension at 2 ug/uL protein.
 The samples were incubated for 10 min at 25°C, followed by an unspecific digest with proteinase K (1 ug) for 5 min at 25°C. 
 The digest was quenched by boiling the samples (99°C) for 5 min, then cooling them down and adding sodium deoxycholate to a final % of 5%. 

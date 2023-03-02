@@ -3,7 +3,7 @@
 This repository contains all files relevant for the data analysis of the publication (doi_here). 
 
 The experimental setup, as well as the LC-MS/MS conditions for the experiment can be found in the methods section and/or on PRIDE (). 
-Raw files, FASTA files and search results can be found on PRIDE ().
+Raw files and search results can be found on PRIDE (PXD040303).
 
 All relevant files for the 3 different experiments (CaM, Gas, Gbg) can be found in the R folder
   * 230214_P04_CaM_LiP
